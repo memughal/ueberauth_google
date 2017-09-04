@@ -168,8 +168,13 @@ defmodule Ueberauth.Strategy.Google do
     case OAuth2.Client.get(client, url, [], params: params) do
       {:ok, %OAuth2.Response{
         status_code: 200,
-        body: %{"aud" => ^client_id}
-      }} -> true
+        body: %{"aud" => rcvd_client_id}
+      }} ->
+        client_application_id =
+          client_id
+          |> String.split("-")
+          |> hd
+        String.starts_with?(rcvd_client_id, client_application_id)
       _ -> false
 
     end

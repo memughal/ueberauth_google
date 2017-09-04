@@ -170,10 +170,7 @@ defmodule Ueberauth.Strategy.Google do
         status_code: 200,
         body: %{"aud" => rcvd_client_id}
       }} ->
-        client_application_id =
-          client_id
-          |> String.split("-")
-          |> hd
+        [client_application_id | _] =  String.split(client_id, "-")
         String.starts_with?(rcvd_client_id, client_application_id)
       _ -> false
 

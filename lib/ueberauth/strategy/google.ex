@@ -56,6 +56,26 @@ defmodule Ueberauth.Strategy.Google do
     end
   end
 
+  @doc """
+  Handles the callback with an ID Token.
+  """
+  def handle_callback!(%Plug.Conn{params: %{"id_token" => id_token}} = conn) do
+    client = Ueberauth.Strategy.Google.OAuth.client()
+
+    with {:ok, response_body} <- token_info(client, id_token) do
+      if token_info_matching_client?(client, response_body) do
+        conn
+        |> put_private(:google_user, response_body)
+        |> put_private(:google_token, OAuth2.AccessToken.new(id_token))
+      else
+        set_errors!(conn, [error("token", "Token client ID mismatch")])
+      end
+    else
+      {:error, error} ->
+        set_errors!(conn, [error("token", "Token verification failed")])
+    end
+  end
+
   @doc false
   def handle_callback!(conn) do
     set_errors!(conn, [error("missing_code", "No code received")])
@@ -160,20 +180,47 @@ defmodule Ueberauth.Strategy.Google do
   end
 
   def check_access_token(conn, client, token) do
-    client_id = client.client_id
     params = %{
       "access_token" => token.access_token
     }
+
     url = "https://www.googleapis.com/oauth2/v3/tokeninfo"
+
     case OAuth2.Client.get(client, url, [], params: params) do
       {:ok, %OAuth2.Response{
         status_code: 200,
-        body: %{"aud" => rcvd_client_id}
+        body: body
       }} ->
-        [client_application_id | _] =  String.split(client_id, "-")
-        String.starts_with?(rcvd_client_id, client_application_id)
-      _ -> false
+        token_info_matching_client?(client, body)
 
+      _ ->
+        false
     end
+  end
+
+  def token_info(client, token) do
+    params = %{
+      "id_token" => token
+    }
+
+    url = "https://www.googleapis.com/oauth2/v3/tokeninfo"
+
+    case OAuth2.Client.get(client, url, [], params: params) do
+      {:ok, %OAuth2.Response{
+        status_code: 200,
+        body: body
+      }} ->
+        {:ok, body}
+
+      response ->
+        {:error, response}
+    end
+  end
+
+  defp token_info_matching_client?(client, token_info) do
+    %{"aud" => rcvd_client_id} = token_info
+
+    [client_application_id | _] = String.split(client.client_id, "-")
+    String.starts_with?(rcvd_client_id, client_application_id)
   end
 end
